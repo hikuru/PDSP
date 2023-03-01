@@ -36,7 +36,7 @@ RMA normalized E-MTAB-3610 untrated cell line gene expression data is downloaded
 
 Patient synergy and sensitivity data is obtained from the Supplementary Files of He et al. <a href="https://aacrjournals.org/cancerres/article/78/9/2407/633083/Patient-Customized-Drug-Combination-Prediction-and">**He et al.**</a>
 
-You can download preprocessed data from <a href="https://drive.google.com/open?id=1_x2AKkMgg9gX19fVDEujpmjeMoyjTLJZ">**link**</a>, extract all files into `data/`
+You can download preprocessed data from <a href="https://drive.google.com/open?id=1_x2AKkMgg9gX19fVDEujpmjeMoyjTLJZ">**link**</a>, extract all files into `input_data/`
 
 ### Training
 ```shell
