@@ -145,6 +145,346 @@ def prepare_data(drugCom_processed_path = 'input_data/DrugComb_processed_all_met
     return train_data, test_data, val_data
 
 
+#################################### PREPARE PATIENT DATA ####################################
+def get_cell_line_data(drugCom_processed_path = 'input_data/DrugComb_processed_all_metrics_ic50_binary.csv',  #DrugComb_processed_ic50binary.csv',
+                drug_features_path = 'input_data/drug_features.json',
+                cell_line_features_path = 'input_data/cell_line_features_ready_qnorm.json',
+                norm='tanh_norm',
+                reversed = 0):
+
+    summary_final, drug_features, cell_line_features = read_train_files(drugCom_processed_path,
+                                                                        drug_features_path,
+                                                                        cell_line_features_path)
+
+    drug_features =  {k.upper(): v for k, v in drug_features.items()}
+    n_feat = len(drug_features[list(drug_features.keys())[0]])
+    n_feat_cl = len(cell_line_features[list(cell_line_features.keys())[0]])
+    n_sample = summary_final.shape[0]
+
+    X_drug_row = np.zeros((n_sample, n_feat))
+    X_drug_col = np.zeros((n_sample, n_feat))
+    X_cell_line = np.zeros((n_sample, n_feat_cl))
+    loewe = np.zeros((n_sample,))
+    ic50_row = np.zeros((n_sample,))
+    ic50_col = np.zeros((n_sample,))
+
+    print("Dataset preparation is STARTED...")
+    for i in range(n_sample):
+        X_drug_row[i,:] = drug_features[summary_final['drug_row'].iloc[i]]
+        X_drug_col[i,:] = drug_features[summary_final['drug_col'].iloc[i]]
+        X_cell_line[i,:] = cell_line_features[summary_final['cell_line_name'].iloc[i]]
+        loewe[i] = summary_final['synergy_loewe'].iloc[i]
+        ic50_row[i] = summary_final['ic50_row'].iloc[i]
+        ic50_col[i] = summary_final['ic50_col'].iloc[i]
+
+    train_data = {}
+    test_data = {}
+    val_data = {}
+
+    train_inds = (summary_final['split'] == 1).values
+    val_inds = (summary_final['split'] == 2).values
+    test_inds = (summary_final['split'] == 3).values
+
+    # Concatenate drug and cell line features
+    train_drug_row = np.concatenate((X_drug_row[train_inds,], X_cell_line[train_inds,]), axis=1)
+    train_drug_col = np.concatenate((X_drug_col[train_inds,], X_cell_line[train_inds,]), axis=1)
+    if reversed == 1:
+        ######### TRY FOR REVERSE ORDER (may be delete later)
+        tmp_col = train_drug_col
+        train_drug_col = np.concatenate((train_drug_col, train_drug_row), axis=0)
+        train_drug_row = np.concatenate((train_drug_row, tmp_col), axis=0)
+        ######### TRY FOR REVERSE ORDER
+
+    val_drug_row = np.concatenate((X_drug_row[val_inds,], X_cell_line[val_inds,]), axis=1)
+    val_drug_col = np.concatenate((X_drug_col[val_inds,], X_cell_line[val_inds,]), axis=1)
+
+    all_data = np.concatenate((train_drug_row, train_drug_col), axis=0)
+    val_loewe = loewe[val_inds,]
+    val_ic50_row = ic50_row[val_inds,]
+    val_ic50_col = ic50_col[val_inds,]
+
+    return all_data, val_drug_row, val_drug_col, val_loewe, val_ic50_row, val_ic50_col
+
+
+def patient_read_train_files(drugCom_processed_path = 'input_data/patient_single_drug_disc_response.tsv',
+                    drug_features_path = 'input_data/patient_drug_features.json',
+                    cell_line_features_path = 'input_data/patient_gex.json'):
+    summary_final = pd.read_csv(drugCom_processed_path, sep='\t')
+    drug_features = read_json(drug_features_path)
+    cell_line_features = read_json(cell_line_features_path)
+
+    drugs = drug_features.keys()
+    summary_final = summary_final[summary_final['FIMM_Compound_ID'].isin(drugs)]
+
+    print("Dataset loading is done...")
+    return summary_final, drug_features, cell_line_features
+
+def patient_prepare_data(drugCom_processed_path = 'input_data/patient_single_drug_disc_response.tsv',
+                drug_features_path = 'input_data/patient_drug_features.json',
+                cell_line_features_path = 'input_data/patient_gex.json',
+                norm='tanh_norm',
+                reversed = 0):
+
+    summary_final, drug_features, cell_line_features = patient_read_train_files(drugCom_processed_path,
+                                                                                drug_features_path,
+                                                                                cell_line_features_path)
+
+    #drug_features =  {k.upper(): v for k, v in drug_features.items()}
+    n_feat = len(drug_features[list(drug_features.keys())[0]])
+    n_feat_cl = len(cell_line_features[list(cell_line_features.keys())[0]])
+    n_sample = summary_final.shape[0]
+
+    X_drug_row = np.zeros((n_sample, n_feat))
+    X_drug_col = np.zeros((n_sample, n_feat))
+    X_cell_line = np.zeros((n_sample, n_feat_cl))
+    loewe = np.zeros((n_sample,))
+    ic50_row = np.zeros((n_sample,))
+    ic50_col = np.zeros((n_sample,))
+
+    print("Dataset preparation is STARTED...")
+    for i in range(n_sample):
+        X_drug_row[i,:] = drug_features[summary_final['FIMM_Compound_ID'].iloc[i]]
+        X_drug_col[i,:] = drug_features[summary_final['FIMM_Compound_ID'].iloc[i]]
+        X_cell_line[i,:] = cell_line_features[str(summary_final['Sample_ID'].iloc[i])]
+        #loewe[i] = summary_final['synergy_loewe'].iloc[i]
+        ic50_row[i] = summary_final['DSS'].iloc[i]
+        ic50_col[i] = summary_final['DSS'].iloc[i]
+
+    train_data = {}
+    test_data = {}
+    val_data = {}
+
+    # Concatenate drug and cell line features
+    train_drug_row = np.concatenate((X_drug_row, X_cell_line), axis=1)
+
+    all_data, val_drug_row, val_drug_col, val_loewe, val_ic50_row, val_ic50_col = get_cell_line_data()
+
+    X_train, X_test, y_train, y_test = train_test_split(train_drug_row, ic50_row, test_size=0.2, random_state=42, stratify=ic50_row)
+
+
+    # Normalize data
+    drugs_all, mean1, std1, mean2, std2, feat_filt = normalize(all_data, norm=norm)
+
+    train_data['drug_row'], mean1, std1, mean2, std2, feat_filtt = normalize(X_train, feat_filt=feat_filt)
+
+    val_data['drug_row'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(X_test, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    train_data['drug_col'], mean1, std1, mean2, std2, feat_filtt = normalize(X_train,feat_filt=feat_filt)
+
+    val_data['drug_col'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(X_test, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    train_data['loewe'] = np.zeros(y_train.shape)
+    train_data['ic50_row'] = y_train
+    train_data['ic50_col'] = y_train
+
+    val_data['loewe'] = np.zeros(y_test.shape)
+    val_data['ic50_row'] = y_test
+    val_data['ic50_col'] = y_test
+
+    print("Dataset preparation is DONE...")
+
+    return train_data, test_data, val_data
+
+
+def patient_test_read(drugCom_processed_path = 'input_data/patient_experiment_synergy.tsv', #'input_data/patient_synergy_id.tsv', #'input_data/patient_loewe.csv',
+                    drug_features_path = 'input_data/patient_drug_features.json',
+                    cell_line_features_path = 'input_data/patient_gex.json',
+                    norm='tanh_norm'):
+
+    summary_final = pd.read_csv(drugCom_processed_path, sep='\t')
+    drug_features = read_json(drug_features_path)
+    cell_line_features = read_json(cell_line_features_path)
+
+    drugs = drug_features.keys()
+    dr1_not_found = summary_final['Compound 1'].isin(drugs)
+    dr2_not_found = summary_final['Compound 2'].isin(drugs)
+    summary_final = summary_final[summary_final['Compound 1'].isin(drugs)]
+    summary_final = summary_final[summary_final['Compound 2'].isin(drugs)]
+
+    n_feat = len(drug_features[list(drug_features.keys())[0]])
+    n_feat_cl = len(cell_line_features[list(cell_line_features.keys())[0]])
+    n_sample = summary_final.shape[0]
+
+    X_drug_row = np.zeros((n_sample, n_feat))
+    X_drug_col = np.zeros((n_sample, n_feat))
+    X_cell_line = np.zeros((n_sample, n_feat_cl))
+    loewe = np.zeros((n_sample,))
+    ic50_row = np.zeros((n_sample,))
+    ic50_col = np.zeros((n_sample,))
+
+    for i in range(n_sample):
+        X_drug_row[i,:] = drug_features[summary_final['Compound 1'].iloc[i]]
+        X_drug_col[i,:] = drug_features[summary_final['Compound 2'].iloc[i]]
+        X_cell_line[i,:] = cell_line_features[str(summary_final['Patient ID'].iloc[i])]
+        loewe[i] = summary_final['Synergy'].iloc[i]
+
+    train_data = {}
+    test_data = {}
+    val_data = {}
+
+    all_data, val_drug_row, val_drug_col, val_loewe, val_ic50_row, val_ic50_col = get_cell_line_data()
+    train_drug_row = np.concatenate((X_drug_row, X_cell_line), axis=1)
+    train_drug_col = np.concatenate((X_drug_col, X_cell_line), axis=1)
+    # Normalize data
+    drugs_all, mean1, std1, mean2, std2, feat_filt = normalize(all_data, norm=norm)
+
+    train_data['drug_row'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(train_drug_row,feat_filt=feat_filt)
+
+    train_data['drug_col'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(train_drug_col,feat_filt=feat_filt)
+
+    train_data['loewe'] = loewe
+    train_data['ic50_row'] = ic50_row
+    train_data['ic50_col'] = ic50_col
+    return train_data, summary_final
+
+
+def patientID_read_train_files(drugCom_processed_path = 'input_data/patient_single_drug_disc_response.tsv',
+                    drug_features_path = 'input_data/patient_drug_features.json',
+                    cell_line_features_path = 'input_data/patient_gex.json',
+                    patientID=[1263]):
+    summary_final = pd.read_csv(drugCom_processed_path, sep='\t')
+    drug_features = read_json(drug_features_path)
+    cell_line_features = read_json(cell_line_features_path)
+
+    summary_final = summary_final[summary_final['Sample_ID'].isin(patientID)]
+
+    drugs = drug_features.keys()
+    summary_final = summary_final[summary_final['FIMM_Compound_ID'].isin(drugs)]
+
+    print("Dataset loading is done...")
+    return summary_final, drug_features, cell_line_features
+
+
+def patientID_prepare_data(drugCom_processed_path = 'input_data/patient_single_drug_disc_response.tsv',
+                drug_features_path = 'input_data/patient_drug_features.json',
+                cell_line_features_path = 'input_data/patient_gex.json',
+                norm='tanh_norm',
+                reversed = 0,
+                patientID=[1263]):
+
+    summary_final, drug_features, cell_line_features = patientID_read_train_files(drugCom_processed_path,
+                                                                                drug_features_path,
+                                                                                cell_line_features_path,
+                                                                                patientID)
+
+    #drug_features =  {k.upper(): v for k, v in drug_features.items()}
+    n_feat = len(drug_features[list(drug_features.keys())[0]])
+    n_feat_cl = len(cell_line_features[list(cell_line_features.keys())[0]])
+    n_sample = summary_final.shape[0]
+
+    X_drug_row = np.zeros((n_sample, n_feat))
+    X_drug_col = np.zeros((n_sample, n_feat))
+    X_cell_line = np.zeros((n_sample, n_feat_cl))
+    loewe = np.zeros((n_sample,))
+    ic50_row = np.zeros((n_sample,))
+    ic50_col = np.zeros((n_sample,))
+
+    print("Dataset preparation is STARTED...")
+    for i in range(n_sample):
+        X_drug_row[i,:] = drug_features[summary_final['FIMM_Compound_ID'].iloc[i]]
+        X_drug_col[i,:] = drug_features[summary_final['FIMM_Compound_ID'].iloc[i]]
+        X_cell_line[i,:] = cell_line_features[str(summary_final['Sample_ID'].iloc[i])]
+        ic50_row[i] = summary_final['DSS'].iloc[i]
+        ic50_col[i] = summary_final['DSS'].iloc[i]
+
+    train_data = {}
+    test_data = {}
+    val_data = {}
+
+    # Concatenate drug and cell line features
+    train_drug_row = np.concatenate((X_drug_row, X_cell_line), axis=1)
+
+    all_data, val_drug_row, val_drug_col, val_loewe, val_ic50_row, val_ic50_col = get_cell_line_data()
+
+    X_train, X_test, y_train, y_test = train_test_split(train_drug_row, ic50_row, test_size=0.2, random_state=42, stratify=ic50_row)
+
+
+    # Normalize data
+    drugs_all, mean1, std1, mean2, std2, feat_filt = normalize(all_data, norm=norm)
+
+    train_data['drug_row'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(X_train, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    val_data['drug_row'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(X_test, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    train_data['drug_col'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(X_train, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    val_data['drug_col'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(X_test, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+    
+    train_data['loewe'] = np.zeros(y_train.shape)
+    train_data['ic50_row'] = y_train
+    train_data['ic50_col'] = y_train
+
+    val_data['loewe'] = np.zeros(y_test.shape)
+    val_data['ic50_row'] = y_test
+    val_data['ic50_col'] = y_test
+
+    print("Dataset preparation is DONE...")
+
+    return train_data, test_data, val_data
+
+
+def patientID_test_read(drugCom_processed_path = 'input_data/patient_experiment_synergy.tsv', #'input_data/patient_synergy_id.tsv', #'input_data/patient_loewe.csv',
+                    drug_features_path = 'input_data/patient_drug_features.json',
+                    cell_line_features_path = 'input_data/patient_gex.json',
+                    norm='tanh_norm',
+                    patientID=[1263]):
+
+    summary_final = pd.read_csv(drugCom_processed_path, sep='\t')
+    drug_features = read_json(drug_features_path)
+    cell_line_features = read_json(cell_line_features_path)
+
+    drugs = drug_features.keys()
+    dr1_not_found = summary_final['Compound 1'].isin(drugs)
+    dr2_not_found = summary_final['Compound 2'].isin(drugs)
+    summary_final = summary_final[summary_final['Compound 1'].isin(drugs)]
+    summary_final = summary_final[summary_final['Compound 2'].isin(drugs)]
+
+    summary_final = summary_final[summary_final['Patient ID'].isin(patientID)]
+
+    n_feat = len(drug_features[list(drug_features.keys())[0]])
+    n_feat_cl = len(cell_line_features[list(cell_line_features.keys())[0]])
+    n_sample = summary_final.shape[0]
+
+    X_drug_row = np.zeros((n_sample, n_feat))
+    X_drug_col = np.zeros((n_sample, n_feat))
+    X_cell_line = np.zeros((n_sample, n_feat_cl))
+    loewe = np.zeros((n_sample,))
+    ic50_row = np.zeros((n_sample,))
+    ic50_col = np.zeros((n_sample,))
+
+    for i in range(n_sample):
+        X_drug_row[i,:] = drug_features[summary_final['Compound 1'].iloc[i]]
+        X_drug_col[i,:] = drug_features[summary_final['Compound 2'].iloc[i]]
+        X_cell_line[i,:] = cell_line_features[str(summary_final['Patient ID'].iloc[i])]
+        loewe[i] = summary_final['Synergy'].iloc[i]
+
+    train_data = {}
+    test_data = {}
+    val_data = {}
+
+    all_data, val_drug_row, val_drug_col, val_loewe, val_ic50_row, val_ic50_col = get_cell_line_data()
+    train_drug_row = np.concatenate((X_drug_row, X_cell_line), axis=1)
+    train_drug_col = np.concatenate((X_drug_col, X_cell_line), axis=1)
+    # Normalize data
+    drugs_all, mean1, std1, mean2, std2, feat_filt = normalize(all_data, norm=norm)
+
+    train_data['drug_row'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(train_drug_row, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    train_data['drug_col'], mmean1, sstd1, mmean2, sstd2, feat_filtt = normalize(train_drug_col, mean1, std1, mean2, std2,
+                                                                                feat_filt=feat_filt, norm=norm)
+
+    train_data['loewe'] = loewe
+    train_data['ic50_row'] = ic50_row
+    train_data['ic50_col'] = ic50_col
+    return train_data, summary_final
+
 def pearson(y, pred):
     pear = stats.pearsonr(y, pred)
     pear_value = pear[0]
